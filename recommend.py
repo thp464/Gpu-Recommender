@@ -1,52 +1,26 @@
 import pandas as pd
+import streamlit as st
 
-# Load data once
-gpus = pd.read_csv("data/gpus.csv")
-games = pd.read_csv("data/games.csv")
-benchmarks = pd.read_csv("data/benchmarks.csv")
+df = pd.read_csv('data/processed/cleaned_fps_data.csv')
 
-def recommend_gpus(game_names, budget, resolution="1080p"):
-    """
-    Recommend GPUs that can run all listed games within the budget.
-    """
-    # Find game_ids for the input games
-    selected_games = games[games['name'].str.lower().isin([g.lower() for g in game_names])]
-    if selected_games.empty:
-        return f"No games found for {game_names}"
+def recommend_gpus(df, desired_resolution, min_fps=60, max_budget=None):
+    # Map resolution input to corresponding column in df
+    res_map = {
+        "1080p": "fps_1080p",
+        "1440p": "fps_1440p",
+        "4k": "fps_4k"
+    }
+    fps_col = res_map.get(desired_resolution.lower())
+    if not fps_col:
+        raise ValueError(f"Unsupported resolution: {desired_resolution}")
     
-    # Check VRAM requirements (take max rec_vram across selected games)
-    max_vram = selected_games['rec_vram_gb'].max()
+    df[fps_col] = df[fps_col].str.extract(r'(\d+\.?\d*)')
+    df[fps_col] = pd.to_numeric(df[fps_col], errors='coerce')
 
-    # Filter GPUs by VRAM and budget
-    candidate_gpus = gpus[(gpus['vram_gb'] >= max_vram) & (gpus['price_usd'] <= budget)]
+    df = df.dropna(subset=[fps_col])
+    filtered = df[df[fps_col] >= min_fps]
 
-    if candidate_gpus.empty:
-        return "No GPUs match your VRAM requirements and budget."
+    if max_budget is not None and max_budget > 0 and 'price' in df.columns:
+        filtered = filtered[filtered['price'] <= max_budget]
 
-    # Check benchmarks for all selected games at given resolution
-    # We want GPUs that have benchmark entries for ALL games
-    recommended = []
-    for _, gpu in candidate_gpus.iterrows():
-        gpu_id = gpu['gpu_id']
-        # Get benchmarks for this gpu and all selected games
-        gpu_benchmarks = benchmarks[
-            (benchmarks['gpu_id'] == gpu_id) & 
-            (benchmarks['game_id'].isin(selected_games['game_id'])) & 
-            (benchmarks['resolution'] == resolution)
-        ]
-        # If benchmarks for all selected games are present
-        if set(gpu_benchmarks['game_id']) == set(selected_games['game_id']):
-            avg_fps = gpu_benchmarks['avg_fps'].mean()
-            recommended.append({
-                'gpu': gpu['name'],
-                'vram_gb': gpu['vram_gb'],
-                'price_usd': gpu['price_usd'],
-                'avg_fps': round(avg_fps, 1)
-            })
-
-    if not recommended:
-        return "No GPUs have benchmark data for all selected games."
-
-    # Sort by average fps descending, then price ascending
-    recommended = sorted(recommended, key=lambda x: (-x['avg_fps'], x['price_usd']))
-    return recommended
+    return filtered.sort_values(by=fps_col, ascending=False)
