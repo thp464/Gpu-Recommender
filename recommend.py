@@ -1,7 +1,12 @@
 import pandas as pd
 import streamlit as st
+import os
 
-df = pd.read_csv('data/processed/cleaned_fps_data.csv')
+def load_data():
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, 'data', 'processed', 'cleaned_fps_data.csv')
+    return pd.read_csv(csv_path)
 
 def recommend_gpus(df, desired_resolution, min_fps=60, max_budget=None):
     # Map resolution input to corresponding column in df
