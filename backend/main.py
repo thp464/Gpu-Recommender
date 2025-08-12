@@ -106,6 +106,7 @@ def get_recommendations(request: GPURequest):
         }[request.resolution]
         
         # Convert to response format
+        # Bug found dealing with Vram Data
         result = []
         for _, row in recommendations.iterrows():
             result.append(GPUResponse(
