@@ -1,0 +1,46 @@
+# GPU Recommender - Production Migration Plan
+
+## Current: Streamlit App
+- Multi-page app (Main, GPU Recommender, All About GPU)
+- recommend.py with core logic
+- Local CSV data, price cleaning works
+
+## Target: React + FastAPI + AWS
+
+### Tech Stack
+- **Frontend**: React + TypeScript + Ant Design
+- **Backend**: FastAPI + Pandas + Docker  
+- **AWS**: S3 + CloudFront + ECS + RDS
+- **Tools**: Git, CloudFormation, Postman
+
+### Migration Steps
+1. **Backend** 
+   - Convert recommend.py → FastAPI endpoints
+   - Add Docker + health checks
+   - Test with Postman
+
+2. **Frontend** 
+   - React app with Ant Design
+   - 3 components: Recommender, Table, About
+   - Connect to API
+
+3. **AWS Deploy** 
+   - ECS for backend, S3+CloudFront for frontend
+   - CloudFormation templates
+   - Deploy scripts
+
+### API Design
+```
+GET  /health
+GET  /api/price-range  
+POST /api/recommendations
+```
+
+### File Structure
+```
+gpu-recommender/
+├── backend/        # FastAPI + Docker
+├── frontend/       # React TypeScript  
+├── infrastructure/ # CloudFormation
+└── docker-compose.yml
+```
