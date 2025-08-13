@@ -2,8 +2,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import pandas as pd
+import sys
 import os
 from typing import List, Optional
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from recommend import load_data, recommend_gpus, clean_all_data, get_price_range
 
 app = FastAPI(title="GPU Recommender API", version="1.0.0")
 
@@ -31,73 +35,27 @@ class PriceRange(BaseModel):
     min_price: float
     max_price: float
 
-def load_data():
-    # Get path relative to backend folder
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    csv_path = os.path.join(script_dir, '..', 'data', 'processed', 'cleaned_fps_data.csv')
-    return pd.read_csv(csv_path)
-
-def recommend_gpus(df, desired_resolution, min_fps=60, max_budget=None):
-    res_map = {
-        "1080p": "fps_1080p",
-        "1440p": "fps_1440p",
-        "4k": "fps_4k"
-    }
-    fps_col = res_map.get(desired_resolution.lower())
-    if not fps_col:
-        raise ValueError(f"Unsupported resolution: {desired_resolution}")
-    
-    # Extract FPS values and convert to numeric
-    df[fps_col] = df[fps_col].str.extract(r'(\d+\.?\d*)')
-    df[fps_col] = pd.to_numeric(df[fps_col], errors='coerce')
-    
-    # Filter out rows with missing FPS data
-    df = df.dropna(subset=[fps_col])
-    filtered = df[df[fps_col] >= min_fps]
-    
-    # Filter by budget if specified
-    if max_budget is not None and max_budget > 0 and 'price' in df.columns:
-        filtered = filtered[filtered['price'] <= max_budget]
-    
-    return filtered.sort_values(by=fps_col, ascending=False)
-
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "message": "GPU Recommender API is running"}
 
 @app.get("/api/price-range", response_model=PriceRange)
-def get_price_range():
+def get_price_range_endpoint():
     try:
         df = load_data()
-        if 'price' in df.columns:
-            # Clean price data like in your Streamlit app
-            df['price'] = df['price'].astype(str).str.replace(r'[\$,]', '', regex=True)
-            df['price'] = pd.to_numeric(df['price'], errors='coerce')
-            return PriceRange(
-                min_price=float(df['price'].min()),
-                max_price=float(df['price'].max())
-            )
-        return PriceRange(min_price=0.0, max_price=2000.0)
+        price_data = get_price_range(df)
+        return PriceRange(**price_data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/recommendations", response_model=List[GPUResponse])
 def get_recommendations(request: GPURequest):
     try:
+        # Load and clean data using recommend.py functions
         df = load_data()
+        df = clean_all_data(df)
         
-        if 'price' in df.columns:
-            df['price'] = df['price'].astype(str).str.replace(r'[\$,]', '', regex=True)
-            df['price'] = pd.to_numeric(df['price'], errors='coerce')
-
-        # Clean VRAM data
-        if 'vram_mb' in df.columns:
-            # Extract numbers from VRAM strings like " 20 GB"
-            df['vram_mb'] = df['vram_mb'].astype(str).str.extract(r'(\d+)')[0]
-            df['vram_mb'] = pd.to_numeric(df['vram_mb'], errors='coerce')
-            # Convert GB to MB if needed (assuming your data is in GB)
-            df['vram_mb'] = df['vram_mb'] * 1024
-        
+        # Get recommendations using recommend.py function
         recommendations = recommend_gpus(df, request.resolution, request.min_fps, request.max_budget)
         
         if recommendations.empty:
@@ -110,21 +68,17 @@ def get_recommendations(request: GPURequest):
             "4k": "fps_4k"
         }[request.resolution]
         
-        # Convert to response format
+        # Convert to response format with safe handling
         result = []
         for _, row in recommendations.iterrows():
             result.append(GPUResponse(
                 gpu=row['gpu'],
                 fps=float(row[fps_col]),
-                vram_mb=int(row['vram_mb']),
-                price=float(row['price'])
+                vram_mb=int(row['vram_mb']) if not pd.isna(row['vram_mb']) else 0,
+                price=float(row['price']) if not pd.isna(row['price']) else 0.0
             ))
         
         return result
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

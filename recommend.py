@@ -8,6 +8,27 @@ def load_data():
     csv_path = os.path.join(script_dir, 'data', 'processed', 'cleaned_fps_data.csv')
     return pd.read_csv(csv_path)
 
+def clean_price_data(df):
+    if 'price' in df.columns:
+        df['price'] = df['price'].astype(str).str.replace(r'[\$,]', '', regex=True)
+        df['price'] = pd.to_numeric(df['price'], errors='coerce')
+    return df
+
+def clean_vram_data(df):
+    if 'vram_mb' in df.columns:
+        # Extract numbers from VRAM strings like " 20 GB"
+        df['vram_mb'] = df['vram_mb'].astype(str).str.extract(r'(\d+)')[0]
+        df['vram_mb'] = pd.to_numeric(df['vram_mb'], errors='coerce')
+        # Convert GB to MB
+        df['vram_mb'] = df['vram_mb'] * 1024
+    return df
+
+def clean_all_data(df):
+    df = clean_price_data(df)
+    df = clean_vram_data(df)
+    return df
+
+
 def recommend_gpus(df, desired_resolution, min_fps=60, max_budget=None):
     # Map resolution input to corresponding column in df
     res_map = {
@@ -29,3 +50,12 @@ def recommend_gpus(df, desired_resolution, min_fps=60, max_budget=None):
         filtered = filtered[filtered['price'] <= max_budget]
 
     return filtered.sort_values(by=fps_col, ascending=False)
+
+def get_price_range(df):
+    df = clean_price_data(df)
+    if 'price' in df.columns:
+        return {
+            "min_price": float(df['price'].min()),
+            "max_price": float(df['price'].max())
+        }
+    return {"min_price": 0.0, "max_price": 2000.0}
