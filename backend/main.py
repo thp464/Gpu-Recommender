@@ -38,7 +38,6 @@ def load_data():
     return pd.read_csv(csv_path)
 
 def recommend_gpus(df, desired_resolution, min_fps=60, max_budget=None):
-    # Your existing logic from recommend.py
     res_map = {
         "1080p": "fps_1080p",
         "1440p": "fps_1440p",
@@ -87,12 +86,18 @@ def get_recommendations(request: GPURequest):
     try:
         df = load_data()
         
-        # Clean price data like in your Streamlit app
         if 'price' in df.columns:
             df['price'] = df['price'].astype(str).str.replace(r'[\$,]', '', regex=True)
             df['price'] = pd.to_numeric(df['price'], errors='coerce')
+
+        # Clean VRAM data
+        if 'vram_mb' in df.columns:
+            # Extract numbers from VRAM strings like " 20 GB"
+            df['vram_mb'] = df['vram_mb'].astype(str).str.extract(r'(\d+)')[0]
+            df['vram_mb'] = pd.to_numeric(df['vram_mb'], errors='coerce')
+            # Convert GB to MB if needed (assuming your data is in GB)
+            df['vram_mb'] = df['vram_mb'] * 1024
         
-        # Get recommendations using your existing logic
         recommendations = recommend_gpus(df, request.resolution, request.min_fps, request.max_budget)
         
         if recommendations.empty:
@@ -106,7 +111,6 @@ def get_recommendations(request: GPURequest):
         }[request.resolution]
         
         # Convert to response format
-        # Bug found dealing with Vram Data
         result = []
         for _, row in recommendations.iterrows():
             result.append(GPUResponse(
