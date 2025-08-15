@@ -88,7 +88,7 @@ class CacheStatus(BaseModel):
     next_refresh: str
 
 
-@app.lifespan("startup")
+@app.on_event("startup")
 async def startup_event():
     logger.info("GPU Recommender API starting up...")
     logger.info("Startup complete!")
